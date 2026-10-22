@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>지뢰찾기</title>
+<style>
+  :root {
+    --bg: #eef1f5; --panel: #ffffff; --text: #1f2328; --muted: #5b6370;
+    --cell: #c9d2de; --cell-hover: #b8c3d2; --open: #f7f9fb; --line: #d5dbe3;
+    --mine: #e5484d; --flag: #d9480f; --accent: #2563eb;
+    --n1: #2563eb; --n2: #15803d; --n3: #dc2626; --n4: #7c3aed;
+    --n5: #b45309; --n6: #0891b2; --n7: #111827; --n8: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1e2127; --text: #e6e8eb; --muted: #9aa3ae;
+      --cell: #3a414c; --cell-hover: #47505d; --open: #262a31; --line: #30343b;
+      --mine: #f2555a; --flag: #ff8a4c; --accent: #7aa2ff;
+      --n1: #7aa2ff; --n2: #4ade80; --n3: #f87171; --n4: #c4a5ff;
+      --n5: #fbbf24; --n6: #22d3ee; --n7: #e5e7eb; --n8: #9ca3af;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    display: flex; justify-content: center; align-items: flex-start;
+    padding: 24px 16px;
+  }
+  .game {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px; box-shadow: 0 6px 24px rgba(0,0,0,.08); max-width: 100%;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; text-align: center; }
+  .levels { display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .levels button, .face {
+    font: inherit; border: 1px solid var(--line); background: var(--open); color: var(--text);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  .levels button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; gap: 12px;
+  }
+  .counter {
+    font-family: Consolas, "Courier New", monospace; font-size: 1.2rem; font-weight: 700;
+    min-width: 64px; padding: 4px 8px; border-radius: 6px; background: var(--open);
+    border: 1px solid var(--line); text-align: center;
+  }
+  .face { font-size: 1.4rem; padding: 2px 10px; }
+  .board-wrap { overflow-x: auto; max-width: calc(100vw - 66px); }
+  .board {
+    display: grid; gap: 2px; user-select: none; -webkit-user-select: none;
+    touch-action: manipulation; width: max-content; margin: 0 auto;
+  }
+  .cell {
+    width: 30px; height: 30px; border-radius: 4px; background: var(--cell);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; cursor: pointer;
+  }
+  .cell:hover:not(.open) { background: var(--cell-hover); }
+  .cell.open { background: var(--open); cursor: default; }
+  .cell.boom { background: var(--mine); }
+  .cell.flag::after { content: "🚩"; font-size: 15px; }
+  .cell.mine::after { content: "💣"; font-size: 15px; }
+  .cell.wrong::after { content: "❌"; font-size: 13px; }
+  .n1 { color: var(--n1); } .n2 { color: var(--n2); } .n3 { color: var(--n3); } .n4 { color: var(--n4); }
+  .n5 { color: var(--n5); } .n6 { color: var(--n6); } .n7 { color: var(--n7); } .n8 { color: var(--n8); }
+  .msg { text-align: center; margin-top: 12px; min-height: 1.4em; font-weight: 700; }
+  .help { text-align: center; margin-top: 6px; color: var(--muted); font-size: .85rem; line-height: 1.5; }
+  .mode { margin-top: 8px; text-align: center; }
+  .mode button {
+    font: inherit; border: 1px solid var(--line); background: var(--open); color: var(--text);
+    border-radius: 8px; padding: 6px 14px; cursor: pointer;
+  }
+  .mode button.on { background: var(--flag); color: #fff; border-color: var(--flag); }
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>💣 지뢰찾기</h1>
+  <div class="levels">
+    <button data-level="easy" class="active">초급 9×9</button>
+    <button data-level="normal">중급 16×16</button>
+    <button data-level="hard">고급 30×16</button>
+  </div>
+  <div class="bar">
+    <div class="counter" id="mines" title="남은 지뢰">010</div>
+    <button class="face" id="face" title="새 게임">🙂</button>
+    <div class="counter" id="timer" title="시간">000</div>
+  </div>
+  <div class="board-wrap"><div class="board" id="board"></div></div>
+  <div class="msg" id="msg"></div>
+  <div class="mode"><button id="flagMode">🚩 깃발 모드: 끔</button></div>
+  <div class="help">
+    클릭: 칸 열기 · 우클릭(길게 누르기): 깃발<br>
+    숫자 칸 클릭: 주변 깃발 수가 맞으면 나머지 칸을 한 번에 열기
+  </div>
+</div>
+
+<script>
+const LEVELS = {
+  easy:   { rows: 9,  cols: 9,  mines: 10 },
+  normal: { rows: 16, cols: 16, mines: 40 },
+  hard:   { rows: 16, cols: 30, mines: 99 },
+};
+
+const boardEl = document.getElementById("board");
+const minesEl = document.getElementById("mines");
+const timerEl = document.getElementById("timer");
+const faceEl = document.getElementById("face");
+const msgEl = document.getElementById("msg");
+const flagModeEl = document.getElementById("flagMode");
+
+let level = LEVELS.easy;
+let cells = [];          // { mine, open, flag, count, el }
+let started = false, over = false;
+let flags = 0, opened = 0, seconds = 0, timerId = null;
+let flagMode = false;
+
+const pad = n => String(Math.max(-99, Math.min(999, n))).padStart(3, "0");
+
+function neighbors(i) {
+  const r = Math.floor(i / level.cols), c = i % level.cols, out = [];
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      if (!dr && !dc) continue;
+      const nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < level.rows && nc >= 0 && nc < level.cols) out.push(nr * level.cols + nc);
+    }
+  return out;
+}
+
+function newGame() {
+  clearInterval(timerId);
+  started = false; over = false; flags = 0; opened = 0; seconds = 0;
+  faceEl.textContent = "🙂"; msgEl.textContent = "";
+  timerEl.textContent = pad(0); minesEl.textContent = pad(level.mines);
+  boardEl.style.gridTemplateColumns = `repeat(${level.cols}, 30px)`;
+  boardEl.innerHTML = "";
+  cells = [];
+  for (let i = 0; i < level.rows * level.cols; i++) {
+    const el = document.createElement("div");
+    el.className = "cell";
+    el.dataset.i = i;
+    boardEl.appendChild(el);
+    cells.push({ mine: false, open: false, flag: false, count: 0, el });
+  }
+}
+
+// 첫 클릭한 칸과 그 주변에는 지뢰를 두지 않음
+function placeMines(safe) {
+  const banned = new Set([safe, ...neighbors(safe)]);
+  const pool = cells.map((_, i) => i).filter(i => !banned.has(i));
+  for (let k = 0; k < level.mines; k++) {
+    const j = k + Math.floor(Math.random() * (pool.length - k));
+    [pool[k], pool[j]] = [pool[j], pool[k]];
+    cells[pool[k]].mine = true;
+  }
+  cells.forEach((cell, i) => {
+    cell.count = neighbors(i).filter(n => cells[n].mine).length;
+  });
+}
+
+function startTimer() {
+  timerId = setInterval(() => { seconds++; timerEl.textContent = pad(seconds); }, 1000);
+}
+
+function reveal(i) {
+  const stack = [i];
+  while (stack.length) {
+    const k = stack.pop(), cell = cells[k];
+    if (cell.open || cell.flag) continue;
+    cell.open = true; opened++;
+    cell.el.classList.add("open");
+    if (cell.mine) continue;
+    if (cell.count) {
+      cell.el.textContent = cell.count;
+      cell.el.classList.add("n" + cell.count);
+    } else {
+      stack.push(...neighbors(k));
+    }
+  }
+}
+
+function openCell(i) {
+  if (over) return;
+  const cell = cells[i];
+  if (cell.flag) return;
+  if (!started) { placeMines(i); started = true; startTimer(); }
+
+  if (cell.open) {
+    // 숫자 칸: 주변 깃발 수가 같으면 나머지 열기
+    const around = neighbors(i);
+    if (cell.count && around.filter(n => cells[n].flag).length === cell.count) {
+      for (const n of around) {
+        if (!cells[n].flag && !cells[n].open) {
+          if (cells[n].mine) return lose(n);
+          reveal(n);
+        }
+      }
+      checkWin();
+    }
+    return;
+  }
+
+  if (cell.mine) return lose(i);
+  reveal(i);
+  checkWin();
+}
+
+function toggleFlag(i) {
+  if (over) return;
+  const cell = cells[i];
+  if (cell.open) return;
+  cell.flag = !cell.flag;
+  flags += cell.flag ? 1 : -1;
+  cell.el.classList.toggle("flag", cell.flag);
+  minesEl.textContent = pad(level.mines - flags);
+}
+
+function lose(i) {
+  over = true; clearInterval(timerId);
+  faceEl.textContent = "😵";
+  msgEl.textContent = "💥 펑! 다시 도전해 보세요.";
+  cells.forEach((cell, k) => {
+    if (cell.mine && !cell.flag) { cell.el.classList.add("open", "mine"); }
+    if (!cell.mine && cell.flag) { cell.el.classList.remove("flag"); cell.el.classList.add("open", "wrong"); }
+    if (k === i) cell.el.classList.add("boom");
+  });
+}
+
+function checkWin() {
+  if (over || opened !== cells.length - level.mines) return;
+  over = true; clearInterval(timerId);
+  faceEl.textContent = "😎";
+  msgEl.textContent = `🎉 성공! ${seconds}초 만에 모든 지뢰를 찾았어요.`;
+  cells.forEach(cell => {
+    if (cell.mine && !cell.flag) { cell.flag = true; cell.el.classList.add("flag"); }
+  });
+  minesEl.textContent = pad(0);
+}
+
+// 마우스 / 터치 입력
+let pressTimer = null, longPressed = false;
+
+boardEl.addEventListener("click", e => {
+  const el = e.target.closest(".cell");
+  if (!el || longPressed) { longPressed = false; return; }
+  const i = +el.dataset.i;
+  if (flagMode && !cells[i].open) toggleFlag(i); else openCell(i);
+});
+
+boardEl.addEventListener("contextmenu", e => {
+  e.preventDefault();
+  const el = e.target.closest(".cell");
+  if (el) toggleFlag(+el.dataset.i);
+});
+
+boardEl.addEventListener("touchstart", e => {
+  const el = e.target.closest(".cell");
+  if (!el) return;
+  longPressed = false;
+  pressTimer = setTimeout(() => {
+    longPressed = true;
+    toggleFlag(+el.dataset.i);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }, 450);
+}, { passive: true });
+
+["touchend", "touchmove", "touchcancel"].forEach(t =>
+  boardEl.addEventListener(t, () => clearTimeout(pressTimer), { passive: true }));
+
+boardEl.addEventListener("mousedown", e => {
+  if (e.button === 0 && !over && e.target.closest(".cell")) faceEl.textContent = "😮";
+});
+document.addEventListener("mouseup", () => { if (!over) faceEl.textContent = "🙂"; });
+
+faceEl.addEventListener("click", newGame);
+
+flagModeEl.addEventListener("click", () => {
+  flagMode = !flagMode;
+  flagModeEl.classList.toggle("on", flagMode);
+  flagModeEl.textContent = `🚩 깃발 모드: ${flagMode ? "켬" : "끔"}`;
+});
+
+document.querySelectorAll(".levels button").forEach(btn =>
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".levels button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    level = LEVELS[btn.dataset.level];
+    newGame();
+  }));
+
+newGame();
+</script>
+</body>
+</html>
